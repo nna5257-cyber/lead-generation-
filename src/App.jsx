@@ -1113,6 +1113,9 @@ function Dashboard({ leads, assets }) {
   const warm = leads.filter(l => l.status === "Warm" || l.status === "Qualified").length;
   const proposals = leads.filter(l => l.status === "Proposal Sent").length;
   const revenue = leads.filter(l => l.status === "Closed").reduce((s, l) => s + (l.value || 0), 0);
+  const avgScore = leads.filter(l => l.score != null).length
+    ? Math.round(leads.filter(l => l.score != null).reduce((s, l) => s + l.score, 0) / leads.filter(l => l.score != null).length)
+    : null;
 
   const stats = [
     { label: "Total Leads", value: total, icon: Users, color: "text-[#818cf8]", bg: "bg-[#6366f1]/8", border: "border-[#6366f1]/15" },
@@ -1122,6 +1125,25 @@ function Dashboard({ leads, assets }) {
   ];
 
   const pipeline = STATUS_ORDER.map(s => ({ status: s, count: leads.filter(l => l.status === s).length }));
+
+  // Conversion rates: leads that reached a status / total leads
+  const conversionRates = [
+    { label: "Cold → Warm", rate: total > 0 ? Math.round((leads.filter(l => ["Warm","Qualified","Proposal Sent","Closed"].includes(l.status)).length / total) * 100) : 0 },
+    { label: "Warm → Qualified", rate: leads.filter(l => ["Warm","Qualified","Proposal Sent","Closed"].includes(l.status)).length > 0 ? Math.round((leads.filter(l => ["Qualified","Proposal Sent","Closed"].includes(l.status)).length / Math.max(1, leads.filter(l => ["Warm","Qualified","Proposal Sent","Closed"].includes(l.status)).length)) * 100) : 0 },
+    { label: "Qualified → Proposal", rate: leads.filter(l => ["Qualified","Proposal Sent","Closed"].includes(l.status)).length > 0 ? Math.round((leads.filter(l => ["Proposal Sent","Closed"].includes(l.status)).length / Math.max(1, leads.filter(l => ["Qualified","Proposal Sent","Closed"].includes(l.status)).length)) * 100) : 0 },
+    { label: "Proposal → Closed", rate: leads.filter(l => ["Proposal Sent","Closed"].includes(l.status)).length > 0 ? Math.round((leads.filter(l => l.status === "Closed").length / Math.max(1, leads.filter(l => ["Proposal Sent","Closed"].includes(l.status)).length)) * 100) : 0 },
+  ];
+
+  // Source breakdown
+  const sources = [...new Set(leads.map(l => l.source).filter(Boolean))];
+  const sourceStats = sources.map(src => {
+    const srcLeads = leads.filter(l => l.source === src);
+    const closed = srcLeads.filter(l => l.status === "Closed").length;
+    return { src, total: srcLeads.length, closed, rate: Math.round((closed / srcLeads.length) * 100) };
+  }).sort((a, b) => b.rate - a.rate);
+
+  // Hot leads (score >= 75, not closed/lost)
+  const hotLeads = leads.filter(l => l.score >= 75 && !["Closed","Lost"].includes(l.status)).sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 3);
 
   return (
     <div className="space-y-8">
@@ -1187,6 +1209,73 @@ function Dashboard({ leads, assets }) {
                 <span className={`font-body text-xs px-2 py-0.5 rounded-md ${assets[key]?.content ? "bg-[#22c55e]/10 text-[#4ade80]" : "bg-[#1a1a2e] text-[#3a3c58]"}`}>
                   {assets[key]?.loading ? "Generating…" : assets[key]?.content ? "Ready" : "Not generated"}
                 </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Conversion funnel + source breakdown + hot leads */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-[#0e0e1a] border border-[#1e1e30] rounded-2xl p-5 space-y-4">
+          <h3 className="font-display font-600 text-[#d4d6f0] text-sm flex items-center gap-2">
+            <TrendingUp size={15} className="text-[#6366f1]" /> Conversion Funnel
+          </h3>
+          <div className="space-y-3">
+            {conversionRates.map(({ label, rate }) => (
+              <div key={label} className="space-y-1">
+                <div className="flex justify-between">
+                  <span className="font-body text-[#5a5c78] text-xs">{label}</span>
+                  <span className="font-display font-600 text-xs text-[#9ca3b8]">{rate}%</span>
+                </div>
+                <div className="h-1 bg-[#1a1a2e] rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] rounded-full transition-all duration-500" style={{ width: `${rate}%` }} />
+                </div>
+              </div>
+            ))}
+            {total === 0 && <p className="font-body text-[#3a3c58] text-xs text-center py-2">Add leads to see funnel</p>}
+          </div>
+        </div>
+
+        <div className="bg-[#0e0e1a] border border-[#1e1e30] rounded-2xl p-5 space-y-4">
+          <h3 className="font-display font-600 text-[#d4d6f0] text-sm flex items-center gap-2">
+            <Target size={15} className="text-[#6366f1]" /> Top Sources
+          </h3>
+          <div className="space-y-3">
+            {sourceStats.length === 0 && <p className="font-body text-[#3a3c58] text-xs text-center py-2">No source data yet</p>}
+            {sourceStats.map(({ src, total: t, closed, rate }) => (
+              <div key={src} className="flex items-center justify-between">
+                <div>
+                  <div className="font-body text-[#9ca3b8] text-xs">{src}</div>
+                  <div className="font-body text-[#3a3c58] text-xs">{t} leads · {closed} closed</div>
+                </div>
+                <span className={`font-display font-700 text-sm ${rate >= 50 ? "text-[#4ade80]" : rate >= 25 ? "text-[#f5a623]" : "text-[#4a4c6a]"}`}>{rate}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-[#0e0e1a] border border-[#1e1e30] rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-display font-600 text-[#d4d6f0] text-sm flex items-center gap-2">
+              <Zap size={15} className="text-[#6366f1]" /> Hot Leads
+            </h3>
+            {avgScore != null && (
+              <span className="font-body text-[#3a3c58] text-xs">avg score <span className="text-[#818cf8] font-600">{avgScore}</span></span>
+            )}
+          </div>
+          <div className="space-y-3">
+            {hotLeads.length === 0 && <p className="font-body text-[#3a3c58] text-xs text-center py-2">No scored leads yet — score leads in the tracker</p>}
+            {hotLeads.map(lead => (
+              <div key={lead.id} className="flex items-center justify-between">
+                <div>
+                  <div className="font-body text-[#9ca3b8] text-xs">{lead.name}</div>
+                  <div className="font-body text-[#3a3c58] text-xs">{lead.company} · {lead.status}</div>
+                </div>
+                <div className={`font-body text-xs rounded-lg px-2 py-1 border flex items-center gap-1 ${getScoreTier(lead.score).cls}`}>
+                  <span className="font-display font-700">{lead.score}</span>
+                  <span className="opacity-75">{getScoreTier(lead.score).label}</span>
+                </div>
               </div>
             ))}
           </div>
