@@ -3,7 +3,7 @@ import {
   Copy, Check, RefreshCw, Plus, Trash2, Search,
   TrendingUp, Users, Send, DollarSign, Zap, Target,
   MessageSquare, Mail, Phone, Building2, MapPin, Briefcase,
-  AlertCircle, BarChart3, Sparkles, X,
+  AlertCircle, BarChart3, Sparkles, X, KeyRound, Eye, EyeOff,
 } from "lucide-react";
 
 // ── Fonts ──────────────────────────────────────────────────────────────────
@@ -75,18 +75,43 @@ const FontLoader = () => (
   `}</style>
 );
 
+// ── API Key ────────────────────────────────────────────────────────────────
+let _apiKey = localStorage.getItem("lf_api_key") ?? "";
+
+function saveApiKey(key) {
+  _apiKey = key.trim();
+  localStorage.setItem("lf_api_key", _apiKey);
+}
+
+function getApiKey() { return _apiKey; }
+
 // ── Claude API ─────────────────────────────────────────────────────────────
 async function callClaude(prompt) {
+  if (!_apiKey) {
+    window.dispatchEvent(new CustomEvent("lf:no-api-key"));
+    throw new Error("NO_API_KEY");
+  }
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": _apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 1200,
       messages: [{ role: "user", content: prompt }],
     }),
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) {
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent("lf:invalid-api-key"));
+      throw new Error("INVALID_API_KEY");
+    }
+    throw new Error(`API error ${res.status}`);
+  }
   const data = await res.json();
   return data.content?.find(b => b.type === "text")?.text ?? "";
 }
@@ -150,6 +175,94 @@ function buildPrompt(icp, type) {
     followup: `${context}\n\nWrite a short follow-up message (email or DM) for when this prospect hasn't replied in 5 days. Reference the original outreach, add new value/insight, keep it brief (3-4 sentences), end with a soft question. No explanations.`,
   };
   return prompts[type];
+}
+
+// ── API Key Modal ──────────────────────────────────────────────────────────
+function ApiKeyModal({ onSave, isUpdate = false }) {
+  const [val, setVal] = useState(isUpdate ? getApiKey() : "");
+  const [show, setShow] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSave = () => {
+    const trimmed = val.trim();
+    if (!trimmed.startsWith("sk-ant-")) {
+      setError("Key should start with sk-ant-  — check and try again.");
+      return;
+    }
+    saveApiKey(trimmed);
+    onSave();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: "rgba(8,8,16,0.96)", backdropFilter: "blur(12px)" }}>
+      <div className="fade-in w-full max-w-md">
+        {/* Logo */}
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] flex items-center justify-center shadow-lg">
+            <Zap size={18} className="text-white" />
+          </div>
+          <span className="font-display font-700 text-[#e8eaf8] text-xl tracking-tight">LeadForge</span>
+        </div>
+
+        <div className="bg-[#0e0e1a] border border-[#1e1e30] rounded-2xl p-7 space-y-6">
+          <div>
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="w-7 h-7 rounded-lg bg-[#6366f1]/10 flex items-center justify-center">
+                <KeyRound size={13} className="text-[#818cf8]" />
+              </div>
+              <h2 className="font-display font-700 text-[#e8eaf8] text-base">
+                {isUpdate ? "Update API Key" : "Enter your Anthropic API Key"}
+              </h2>
+            </div>
+            <p className="font-body text-[#5a5c78] text-sm leading-relaxed">
+              {isUpdate
+                ? "Your key is stored only in your browser. LeadForge never sees it."
+                : "LeadForge uses Claude to generate your lead assets. Your key is stored locally in your browser and never sent to us."}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="font-body text-[#6b6d88] text-xs">API Key</label>
+            <div className="relative">
+              <input
+                type={show ? "text" : "password"}
+                value={val}
+                onChange={e => { setVal(e.target.value); setError(""); }}
+                placeholder="sk-ant-api03-..."
+                className="input-field font-body w-full rounded-xl px-4 py-3 text-sm pr-10"
+                onKeyDown={e => e.key === "Enter" && handleSave()}
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setShow(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#3a3c58] hover:text-[#6b7280] transition-colors"
+              >
+                {show ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+            {error && <p className="font-body text-[#ff6b4a] text-xs">{error}</p>}
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={handleSave}
+              disabled={!val.trim()}
+              className="btn-primary font-display font-600 text-white rounded-xl px-6 py-3 text-sm w-full"
+            >
+              {isUpdate ? "Update Key" : "Save & Continue"}
+            </button>
+            <p className="font-body text-[#3a3c58] text-xs text-center">
+              Get a key at{" "}
+              <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="text-[#6366f1] hover:underline">
+                console.anthropic.com
+              </a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Toast ──────────────────────────────────────────────────────────────────
@@ -773,8 +886,21 @@ export default function App() {
     { id: 3, name: "Priya Sharma", company: "Bloom Brand", contact: "priya@bloombrand.com", source: "Referral", value: 12000, status: "Closed", score: 95, scoreReason: "Perfect fit — referral source, high value, closed deal confirms ICP accuracy.", scoring: false },
   ]);
   const [toast, setToast] = useState(null);
+  const [apiKeyModal, setApiKeyModal] = useState(!getApiKey());
+  const [apiKeyUpdate, setApiKeyUpdate] = useState(false);
 
   const showToast = useCallback((msg) => setToast(msg), []);
+
+  useEffect(() => {
+    const onMissing = () => setApiKeyModal(true);
+    const onInvalid = () => { setApiKeyModal(true); showToast("Invalid API key — please update it"); };
+    window.addEventListener("lf:no-api-key", onMissing);
+    window.addEventListener("lf:invalid-api-key", onInvalid);
+    return () => {
+      window.removeEventListener("lf:no-api-key", onMissing);
+      window.removeEventListener("lf:invalid-api-key", onInvalid);
+    };
+  }, [showToast]);
 
   const generateAll = async () => {
     setGenerating(true);
@@ -816,18 +942,27 @@ export default function App() {
               <span className="font-display font-700 text-[#e8eaf8] text-base tracking-tight">LeadForge</span>
               <span className="hidden md:block font-body text-[#2a2a40] text-xs border border-[#1e1e30] px-2 py-0.5 rounded-md">AI-Powered</span>
             </div>
-            <nav className="flex gap-1">
-              {tabs.map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  onClick={() => setActiveTab(id)}
-                  className={`nav-tab font-body text-sm px-3 md:px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all ${activeTab === id ? "active bg-[#6366f1]/10 text-[#a5b4fc]" : "text-[#4a4c6a] hover:text-[#8a8ca8]"}`}
-                >
-                  <Icon size={13} />
-                  <span className="hidden md:inline">{label}</span>
-                </button>
-              ))}
-            </nav>
+            <div className="flex items-center gap-1">
+              <nav className="flex gap-1">
+                {tabs.map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    onClick={() => setActiveTab(id)}
+                    className={`nav-tab font-body text-sm px-3 md:px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all ${activeTab === id ? "active bg-[#6366f1]/10 text-[#a5b4fc]" : "text-[#4a4c6a] hover:text-[#8a8ca8]"}`}
+                  >
+                    <Icon size={13} />
+                    <span className="hidden md:inline">{label}</span>
+                  </button>
+                ))}
+              </nav>
+              <button
+                onClick={() => setApiKeyUpdate(true)}
+                title="API Key settings"
+                className="ml-2 p-2 rounded-xl text-[#3a3c58] hover:text-[#818cf8] hover:bg-[#6366f1]/10 transition-all"
+              >
+                <KeyRound size={14} />
+              </button>
+            </div>
           </div>
         </header>
 
@@ -854,6 +989,22 @@ export default function App() {
 
         {/* Toast */}
         {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+
+        {/* API Key modals */}
+        {apiKeyModal && (
+          <ApiKeyModal onSave={() => setApiKeyModal(false)} isUpdate={false} />
+        )}
+        {apiKeyUpdate && (
+          <ApiKeyModal onSave={() => { setApiKeyUpdate(false); showToast("API key updated"); }} isUpdate={true} />
+        )}
+        {apiKeyUpdate && (
+          <button
+            onClick={() => setApiKeyUpdate(false)}
+            className="fixed top-4 right-4 z-[101] p-2 rounded-xl bg-[#1a1a2e] hover:bg-[#22223a] text-[#6b7280] hover:text-[#ad4a4a] transition-all"
+          >
+            <X size={15} />
+          </button>
+        )}
       </div>
     </>
   );
