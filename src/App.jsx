@@ -3,7 +3,7 @@ import {
   Copy, Check, RefreshCw, Plus, Trash2, Search,
   TrendingUp, Users, Send, DollarSign, Zap, Target,
   MessageSquare, Mail, Phone, Building2, MapPin, Briefcase,
-  AlertCircle, BarChart3, Sparkles, X, KeyRound, Eye, EyeOff,
+  AlertCircle, BarChart3, Sparkles, X, KeyRound, Eye, EyeOff, ListOrdered,
 } from "lucide-react";
 
 // ── Fonts ──────────────────────────────────────────────────────────────────
@@ -173,6 +173,11 @@ function buildPrompt(icp, type) {
     subjects: `${context}\n\nWrite exactly 3 cold email subject lines for this client. Make them curiosity-driven, specific, and under 8 words each. Number them 1-3. No explanations.`,
     objection: `${context}\n\nWrite a professional objection-handling reply for when this prospect says "We don't have budget right now." Make it non-pushy, reframe the ROI, and keep the door open. 3-5 sentences. No explanations.`,
     followup: `${context}\n\nWrite a short follow-up message (email or DM) for when this prospect hasn't replied in 5 days. Reference the original outreach, add new value/insight, keep it brief (3-4 sentences), end with a soft question. No explanations.`,
+    seq1: `${context}\n\nWrite Email 1 of a 5-part cold outreach sequence (Day 1). Initial contact — open with their specific pain, connect it to your offer, one clear CTA. Subject line + body. Under 150 words. No explanations.`,
+    seq2: `${context}\n\nWrite Email 2 of a 5-part cold outreach sequence (Day 3). Value-add — share one sharp insight or stat directly relevant to their pain. Briefly reference the first email. Under 120 words. No explanations.`,
+    seq3: `${context}\n\nWrite Email 3 of a 5-part cold outreach sequence (Day 6). Social proof — reference a result you achieved for a similar client. Keep it specific and credible. Short CTA. Under 100 words. No explanations.`,
+    seq4: `${context}\n\nWrite Email 4 of a 5-part cold outreach sequence (Day 9). Direct ask — offer one low-friction next step (15-min call, quick audit, demo). Under 80 words. No explanations.`,
+    seq5: `${context}\n\nWrite Email 5 of a 5-part cold outreach sequence (Day 14). Break-up email — acknowledge they may not be interested, leave the door open, include one final hook. Under 70 words. No explanations.`,
   };
   return prompts[type];
 }
@@ -467,6 +472,9 @@ function ICPBuilder({ icp, setIcp, onGenerate, generating }) {
 
 // ── AI Content Generator ───────────────────────────────────────────────────
 function ContentGenerator({ icp, assets, setAssets, setGenerating, showToast }) {
+  const [subTab, setSubTab] = useState("assets");
+  const [generatingSeq, setGeneratingSeq] = useState(false);
+
   const outputDefs = [
     { key: "email", title: "Cold Outreach Email", icon: Mail },
     { key: "dm", title: "Cold DM", icon: MessageSquare },
@@ -475,6 +483,14 @@ function ContentGenerator({ icp, assets, setAssets, setGenerating, showToast }) 
     { key: "subjects", title: "Email Subject Lines", icon: Mail },
     { key: "objection", title: "Objection Handling Reply", icon: AlertCircle },
     { key: "followup", title: "Follow-Up Message", icon: Send },
+  ];
+
+  const seqDefs = [
+    { key: "seq1", title: "Email 1 — Day 1: Cold Open", icon: Mail },
+    { key: "seq2", title: "Email 2 — Day 3: Value Add", icon: Mail },
+    { key: "seq3", title: "Email 3 — Day 6: Social Proof", icon: Mail },
+    { key: "seq4", title: "Email 4 — Day 9: Direct Ask", icon: Send },
+    { key: "seq5", title: "Email 5 — Day 14: Break-Up", icon: Mail },
   ];
 
   const regenerateOne = async (key) => {
@@ -487,46 +503,113 @@ function ContentGenerator({ icp, assets, setAssets, setGenerating, showToast }) 
     }
   };
 
+  const generateSequence = async () => {
+    setGeneratingSeq(true);
+    const keys = ["seq1", "seq2", "seq3", "seq4", "seq5"];
+    setAssets(p => ({ ...p, ...Object.fromEntries(keys.map(k => [k, { content: "", loading: true }])) }));
+    await Promise.all(keys.map(async (key) => {
+      try {
+        const text = await callClaude(buildPrompt(icp, key));
+        setAssets(p => ({ ...p, [key]: { content: text, loading: false } }));
+      } catch {
+        setAssets(p => ({ ...p, [key]: { content: "Generation failed. Try regenerating.", loading: false } }));
+      }
+    }));
+    setGeneratingSeq(false);
+    showToast("Email sequence generated");
+  };
+
   const copyContent = (content) => {
     navigator.clipboard.writeText(content);
     showToast("Copied to clipboard");
   };
 
   const hasAssets = Object.values(assets).some(a => a.content || a.loading);
+  const hasSeq = seqDefs.some(d => assets[d.key]?.content || assets[d.key]?.loading);
+  const isIcpReady = Object.values(icp).every(v => v.trim().length > 0);
 
-  if (!hasAssets) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 space-y-4">
-        <div className="w-14 h-14 rounded-2xl bg-[#6366f1]/8 border border-[#6366f1]/15 flex items-center justify-center">
-          <Sparkles size={22} className="text-[#6366f1]/50" />
-        </div>
-        <p className="font-body text-[#3a3c58] text-sm text-center max-w-xs">
-          Complete your ICP and click <span className="text-[#6366f1]">Generate Lead Assets</span> to create your outreach toolkit.
-        </p>
+  const EmptyState = ({ label, onGenerate, loading }) => (
+    <div className="flex flex-col items-center justify-center py-20 space-y-4">
+      <div className="w-14 h-14 rounded-2xl bg-[#6366f1]/8 border border-[#6366f1]/15 flex items-center justify-center">
+        <Sparkles size={22} className="text-[#6366f1]/50" />
       </div>
-    );
-  }
+      {isIcpReady ? (
+        <div className="text-center space-y-3">
+          <p className="font-body text-[#3a3c58] text-sm max-w-xs">{label}</p>
+          <button onClick={onGenerate} disabled={loading} className="btn-primary font-display font-600 text-white rounded-xl px-6 py-2.5 text-sm flex items-center gap-2 mx-auto">
+            {loading ? <><RefreshCw size={13} className="animate-spin" /> Generating…</> : <><Sparkles size={13} /> Generate Now</>}
+          </button>
+        </div>
+      ) : (
+        <p className="font-body text-[#3a3c58] text-sm text-center max-w-xs">
+          Complete your ICP and click <span className="text-[#6366f1]">Generate Lead Assets</span> first.
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="font-display text-xl font-700 text-[#e8eaf8] mb-1">AI-Generated Outreach Assets</h2>
-        <p className="font-body text-[#5a5c78] text-sm">Tailored assets built from your ICP. Copy, regenerate, or iterate each piece.</p>
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <h2 className="font-display text-xl font-700 text-[#e8eaf8] mb-1">AI-Generated Outreach Assets</h2>
+          <p className="font-body text-[#5a5c78] text-sm">Tailored assets built from your ICP. Copy, regenerate, or iterate each piece.</p>
+        </div>
+        <div className="flex gap-1 bg-[#0e0e1a] border border-[#1e1e30] rounded-xl p-1">
+          <button onClick={() => setSubTab("assets")} className={`font-body text-xs px-3 py-2 rounded-lg transition-all flex items-center gap-1.5 ${subTab === "assets" ? "bg-[#6366f1]/15 text-[#818cf8]" : "text-[#4a4c6a] hover:text-[#6b7280]"}`}>
+            <Sparkles size={11} /> Assets
+          </button>
+          <button onClick={() => setSubTab("sequence")} className={`font-body text-xs px-3 py-2 rounded-lg transition-all flex items-center gap-1.5 ${subTab === "sequence" ? "bg-[#6366f1]/15 text-[#818cf8]" : "text-[#4a4c6a] hover:text-[#6b7280]"}`}>
+            <ListOrdered size={11} /> Sequence
+          </button>
+        </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {outputDefs.map(({ key, title, icon }) => (
-          <div key={key} className={key === "email" || key === "questions" ? "md:col-span-2" : ""}>
-            <OutputCard
-              title={title}
-              icon={icon}
-              content={assets[key]?.content ?? ""}
-              loading={assets[key]?.loading ?? false}
-              onRegenerate={() => regenerateOne(key)}
-              onCopy={() => copyContent(assets[key]?.content ?? "")}
-            />
+
+      {subTab === "assets" && (
+        !hasAssets ? (
+          <EmptyState label="Generate your outreach asset toolkit from your ICP." onGenerate={() => {}} loading={false} />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {outputDefs.map(({ key, title, icon }) => (
+              <div key={key} className={key === "email" || key === "questions" ? "md:col-span-2" : ""}>
+                <OutputCard
+                  title={title}
+                  icon={icon}
+                  content={assets[key]?.content ?? ""}
+                  loading={assets[key]?.loading ?? false}
+                  onRegenerate={() => regenerateOne(key)}
+                  onCopy={() => copyContent(assets[key]?.content ?? "")}
+                />
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        )
+      )}
+
+      {subTab === "sequence" && (
+        !hasSeq ? (
+          <EmptyState label="Generate a 5-email drip sequence — Day 1 through Day 14." onGenerate={generateSequence} loading={generatingSeq} />
+        ) : (
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <button onClick={generateSequence} disabled={generatingSeq} className="btn-primary font-display font-600 text-white rounded-xl px-5 py-2.5 text-sm flex items-center gap-2">
+                {generatingSeq ? <><RefreshCw size={13} className="animate-spin" /> Regenerating…</> : <><RefreshCw size={13} /> Regenerate All</>}
+              </button>
+            </div>
+            {seqDefs.map(({ key, title, icon }) => (
+              <OutputCard
+                key={key}
+                title={title}
+                icon={icon}
+                content={assets[key]?.content ?? ""}
+                loading={assets[key]?.loading ?? false}
+                onRegenerate={() => regenerateOne(key)}
+                onCopy={() => copyContent(assets[key]?.content ?? "")}
+              />
+            ))}
+          </div>
+        )
+      )}
     </div>
   );
 }
