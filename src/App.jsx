@@ -100,6 +100,36 @@ function personalizePrompt(lead, icp, type) {
   return `${leadCtx}\n${icpCtx}\n\nWrite a short personalized cold DM for ${icp.platform || "LinkedIn"} specifically for ${lead.name} at ${lead.company}. Max 5 sentences. Use their name. Reference their company. End with a soft CTA. No explanations.`;
 }
 
+function scorePrompt(lead, icp) {
+  return `You are a lead scoring expert. Score this lead's fit against the ICP on a 0–100 scale.
+
+ICP:
+- Industry: ${icp.industry || "not specified"}
+- Company Size: ${icp.companySize || "not specified"}
+- Budget: ${icp.budget || "not specified"}
+- Location: ${icp.location || "not specified"}
+- Pain Point: ${icp.painPoint || "not specified"}
+- Offer Type: ${icp.offerType || "not specified"}
+
+Lead:
+- Name: ${lead.name}
+- Company: ${lead.company}
+- Source: ${lead.source || "unknown"}
+- Deal Value: £${lead.value || 0}
+- Status: ${lead.status}
+
+Score based on: industry match, company size fit, budget alignment, source quality, and urgency from their pipeline status.
+
+Return ONLY valid JSON, no markdown: {"score": 82, "reason": "Strong industry match and budget alignment"}`;
+}
+
+function getScoreTier(score) {
+  if (score >= 90) return { label: "Hot",  cls: "bg-[#2a1510] text-[#ff6b4a] border-[#3d1f15]" };
+  if (score >= 75) return { label: "Warm", cls: "bg-[#251f10] text-[#f5a623] border-[#3a2e15]" };
+  if (score >= 60) return { label: "Mid",  cls: "bg-[#101825] text-[#60a5fa] border-[#152030]" };
+  return                  { label: "Cold", cls: "bg-[#1a1a2e] text-[#4a4c6a] border-[#2a2a40]" };
+}
+
 function buildPrompt(icp, type) {
   const context = `Ideal Client Profile:
 - Industry/Niche: ${icp.industry}
@@ -414,7 +444,7 @@ const STATUS_COLORS = {
   Lost: "bg-[#251818] text-[#ad4a4a] border-[#3a1e1e]",
 };
 
-const emptyLead = { name: "", company: "", contact: "", source: "", value: "", status: "Cold" };
+const emptyLead = { name: "", company: "", contact: "", source: "", value: "", status: "Cold", score: null, scoreReason: "", scoring: false };
 
 function LeadTracker({ leads, setLeads, icp, showToast }) {
   const [search, setSearch] = useState("");
@@ -448,6 +478,20 @@ function LeadTracker({ leads, setLeads, icp, showToast }) {
     setLeads(p => p.map(l =>
       l.id !== id ? l : { ...l, [field]: field === "value" ? parseFloat(value) || 0 : value }
     ));
+  };
+
+  const scoreLead = async (id) => {
+    const lead = leads.find(l => l.id === id);
+    if (!lead) return;
+    setLeads(p => p.map(l => l.id === id ? { ...l, scoring: true } : l));
+    try {
+      const text = await callClaude(scorePrompt(lead, icp));
+      const parsed = JSON.parse(text.trim());
+      setLeads(p => p.map(l => l.id === id ? { ...l, score: parsed.score, scoreReason: parsed.reason, scoring: false } : l));
+    } catch {
+      setLeads(p => p.map(l => l.id === id ? { ...l, scoring: false } : l));
+      showToast("Scoring failed — try again");
+    }
   };
 
   const filtered = leads
@@ -570,6 +614,29 @@ function LeadTracker({ leads, setLeads, icp, showToast }) {
                   className="font-body text-[#9ca3b8] text-xs bg-transparent border-none outline-none w-16 text-right"
                 />
               </div>
+              {/* Score badge */}
+              {lead.scoring ? (
+                <div className="flex items-center gap-1.5 w-20 justify-center">
+                  <RefreshCw size={11} className="animate-spin text-[#4a4c6a]" />
+                  <span className="font-body text-[#3a3c58] text-xs">Scoring…</span>
+                </div>
+              ) : lead.score != null ? (
+                <div
+                  title={lead.scoreReason}
+                  className={`font-body text-xs rounded-lg px-2.5 py-1.5 border flex items-center gap-1.5 cursor-default ${getScoreTier(lead.score).cls}`}
+                >
+                  <span className="font-display font-700">{lead.score}</span>
+                  <span className="opacity-75">{getScoreTier(lead.score).label}</span>
+                </div>
+              ) : (
+                <button
+                  onClick={() => scoreLead(lead.id)}
+                  className="opacity-0 group-hover:opacity-100 font-body text-[#3a3c58] hover:text-[#818cf8] text-xs transition-all flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-[#6366f1]/10"
+                  title="Score this lead with AI"
+                >
+                  <BarChart3 size={11} /> Score
+                </button>
+              )}
               <button
                 onClick={() => cycleStatus(lead.id)}
                 className={`status-badge font-body text-xs rounded-lg px-3 py-1.5 border ${STATUS_COLORS[lead.status]}`}
@@ -701,9 +768,9 @@ export default function App() {
   const [assets, setAssets] = useState({});
   const [generating, setGenerating] = useState(false);
   const [leads, setLeads] = useState([
-    { id: 1, name: "Sarah Mitchell", company: "Venture Co", contact: "s.mitchell@venture.co", source: "LinkedIn", value: 4500, status: "Warm" },
-    { id: 2, name: "James Okafor", company: "ScaleHQ", contact: "james@scalehq.io", source: "Cold Email", value: 8000, status: "Qualified" },
-    { id: 3, name: "Priya Sharma", company: "Bloom Brand", contact: "priya@bloombrand.com", source: "Referral", value: 12000, status: "Closed" },
+    { id: 1, name: "Sarah Mitchell", company: "Venture Co", contact: "s.mitchell@venture.co", source: "LinkedIn", value: 4500, status: "Warm", score: 78, scoreReason: "Good industry fit, strong platform match, mid-range budget alignment.", scoring: false },
+    { id: 2, name: "James Okafor", company: "ScaleHQ", contact: "james@scalehq.io", source: "Cold Email", value: 8000, status: "Qualified", score: 91, scoreReason: "Excellent ICP match — right size, high deal value, qualified status signals urgency.", scoring: false },
+    { id: 3, name: "Priya Sharma", company: "Bloom Brand", contact: "priya@bloombrand.com", source: "Referral", value: 12000, status: "Closed", score: 95, scoreReason: "Perfect fit — referral source, high value, closed deal confirms ICP accuracy.", scoring: false },
   ]);
   const [toast, setToast] = useState(null);
 
