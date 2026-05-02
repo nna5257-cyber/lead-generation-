@@ -379,7 +379,9 @@ function Skeleton({ lines = 4 }) {
 }
 
 // ── Output Card ────────────────────────────────────────────────────────────
-function OutputCard({ title, icon: Icon, content, loading, onRegenerate, onCopy }) {
+function OutputCard({ title, icon: Icon, content, loading, history = [], onRegenerate, onCopy, onRestoreVersion }) {
+  const [showHistory, setShowHistory] = useState(false);
+
   return (
     <div className="output-card bg-[#0e0e1a] border border-[#1e1e30] rounded-2xl p-5 space-y-4">
       <div className="flex items-center justify-between">
@@ -388,6 +390,16 @@ function OutputCard({ title, icon: Icon, content, loading, onRegenerate, onCopy 
             <Icon size={15} className="text-[#818cf8]" />
           </div>
           <span className="font-display font-600 text-[#d4d6f0] text-sm">{title}</span>
+          {history.length > 0 && (
+            <button
+              onClick={() => setShowHistory(v => !v)}
+              className="font-body text-[#3a3c58] hover:text-[#6b7280] text-xs transition-colors flex items-center gap-1"
+              title="Version history"
+            >
+              <RefreshCw size={10} />
+              {history.length}
+            </button>
+          )}
         </div>
         {!loading && content && (
           <div className="flex gap-2">
@@ -409,6 +421,22 @@ function OutputCard({ title, icon: Icon, content, loading, onRegenerate, onCopy 
           <p className="font-body text-[#3a3a50] text-sm italic">Generate assets to see output…</p>
         )}
       </div>
+      {showHistory && history.length > 0 && (
+        <div className="border-t border-[#1a1a2e] pt-4 space-y-3">
+          <p className="font-body text-[#3a3c58] text-xs">Previous versions — click to restore</p>
+          {history.map((v, i) => (
+            <div key={i} className="flex items-start gap-2 group">
+              <p className="font-body text-[#3a3c58] text-xs leading-relaxed flex-1 line-clamp-2">{v}</p>
+              <button
+                onClick={() => { onRestoreVersion(v); setShowHistory(false); }}
+                className="opacity-0 group-hover:opacity-100 font-body text-[#6366f1] text-xs transition-all flex-shrink-0"
+              >
+                Restore
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -578,13 +606,28 @@ function ContentGenerator({ icp, assets, setAssets, setGenerating, showToast }) 
   ];
 
   const regenerateOne = async (key) => {
-    setAssets(p => ({ ...p, [key]: { content: "", loading: true } }));
+    setAssets(p => {
+      const prev = p[key]?.content;
+      const prevHistory = p[key]?.history ?? [];
+      const history = prev ? [prev, ...prevHistory].slice(0, 5) : prevHistory;
+      return { ...p, [key]: { content: "", loading: true, history } };
+    });
     try {
       const text = await callClaude(buildPrompt(icp, key));
-      setAssets(p => ({ ...p, [key]: { content: text, loading: false } }));
+      setAssets(p => ({ ...p, [key]: { ...p[key], content: text, loading: false } }));
     } catch {
-      setAssets(p => ({ ...p, [key]: { content: "Generation failed. Check your connection and try again.", loading: false } }));
+      setAssets(p => ({ ...p, [key]: { ...p[key], content: "Generation failed. Check your connection and try again.", loading: false } }));
     }
+  };
+
+  const restoreVersion = (key, version) => {
+    setAssets(p => {
+      const cur = p[key]?.content;
+      const history = (p[key]?.history ?? []).filter(v => v !== version);
+      const newHistory = cur ? [cur, ...history].slice(0, 5) : history;
+      return { ...p, [key]: { ...p[key], content: version, history: newHistory } };
+    });
+    showToast("Version restored");
   };
 
   const generateSequence = async () => {
@@ -674,8 +717,10 @@ function ContentGenerator({ icp, assets, setAssets, setGenerating, showToast }) 
                   icon={icon}
                   content={assets[key]?.content ?? ""}
                   loading={assets[key]?.loading ?? false}
+                  history={assets[key]?.history ?? []}
                   onRegenerate={() => regenerateOne(key)}
                   onCopy={() => copyContent(assets[key]?.content ?? "")}
+                  onRestoreVersion={(v) => restoreVersion(key, v)}
                 />
               </div>
             ))}
@@ -701,8 +746,10 @@ function ContentGenerator({ icp, assets, setAssets, setGenerating, showToast }) 
                 icon={icon}
                 content={assets[key]?.content ?? ""}
                 loading={assets[key]?.loading ?? false}
+                history={assets[key]?.history ?? []}
                 onRegenerate={() => regenerateOne(key)}
                 onCopy={() => copyContent(assets[key]?.content ?? "")}
+                onRestoreVersion={(v) => restoreVersion(key, v)}
               />
             ))}
           </div>
