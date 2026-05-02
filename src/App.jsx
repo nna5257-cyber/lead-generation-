@@ -425,6 +425,26 @@ const defaultICP = {
 };
 
 function ICPBuilder({ icp, setIcp, onGenerate, generating }) {
+  const loadProfiles = () => { try { return JSON.parse(localStorage.getItem("lf_icp_profiles") ?? "[]"); } catch { return []; } };
+  const [profiles, setProfiles] = useState(loadProfiles);
+  const [profileName, setProfileName] = useState("");
+  const [showSave, setShowSave] = useState(false);
+
+  const saveProfile = () => {
+    if (!profileName.trim()) return;
+    const updated = [...profiles.filter(p => p.name !== profileName.trim()), { name: profileName.trim(), icp }];
+    setProfiles(updated);
+    localStorage.setItem("lf_icp_profiles", JSON.stringify(updated));
+    setShowSave(false);
+    setProfileName("");
+  };
+
+  const deleteProfile = (name) => {
+    const updated = profiles.filter(p => p.name !== name);
+    setProfiles(updated);
+    localStorage.setItem("lf_icp_profiles", JSON.stringify(updated));
+  };
+
   const fields = [
     { key: "industry", label: "Industry / Niche", placeholder: "e.g. SaaS, E-commerce, Finance", icon: Building2 },
     { key: "companySize", label: "Company Size", placeholder: "e.g. 10–50 employees, SME, Enterprise", icon: Users },
@@ -439,10 +459,57 @@ function ICPBuilder({ icp, setIcp, onGenerate, generating }) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="font-display text-xl font-700 text-[#e8eaf8] mb-1">Ideal Client Profile</h2>
-        <p className="font-body text-[#5a5c78] text-sm">Define your target precisely. The sharper your ICP, the higher-converting your assets.</p>
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <h2 className="font-display text-xl font-700 text-[#e8eaf8] mb-1">Ideal Client Profile</h2>
+          <p className="font-body text-[#5a5c78] text-sm">Define your target precisely. The sharper your ICP, the higher-converting your assets.</p>
+        </div>
+        <button
+          onClick={() => setShowSave(v => !v)}
+          className="font-body text-[#5a5c78] hover:text-[#9ca3b8] border border-[#1e1e30] hover:border-[#2a2a40] rounded-xl px-4 py-2 text-sm flex items-center gap-2 transition-all"
+        >
+          <Plus size={13} /> Save Profile
+        </button>
       </div>
+
+      {/* Saved profiles */}
+      {profiles.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {profiles.map(p => (
+            <div key={p.name} className="flex items-center gap-1 bg-[#0e0e1a] border border-[#1e1e30] rounded-lg px-3 py-1.5 group">
+              <button
+                onClick={() => setIcp(p.icp)}
+                className="font-body text-xs text-[#6b7280] hover:text-[#a5b4fc] transition-colors"
+              >
+                {p.name}
+              </button>
+              <button
+                onClick={() => deleteProfile(p.name)}
+                className="opacity-0 group-hover:opacity-100 text-[#3a3c58] hover:text-[#ad4a4a] transition-all ml-1"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Save form */}
+      {showSave && (
+        <div className="fade-in flex gap-2">
+          <input
+            value={profileName}
+            onChange={e => setProfileName(e.target.value)}
+            placeholder="Profile name (e.g. SaaS Founders)"
+            className="input-field font-body flex-1 rounded-xl px-4 py-2.5 text-sm"
+            onKeyDown={e => e.key === "Enter" && saveProfile()}
+            autoFocus
+          />
+          <button onClick={saveProfile} disabled={!profileName.trim()} className="btn-primary font-display font-600 text-white rounded-xl px-4 py-2.5 text-sm">Save</button>
+          <button onClick={() => setShowSave(false)} className="font-body text-[#5a5c78] text-sm hover:text-[#9ca3b8] transition-colors px-2">Cancel</button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {fields.map(({ key, label, placeholder, icon: Icon }) => (
           <div key={key} className={key === "painPoint" || key === "offerType" ? "md:col-span-2" : ""}>
