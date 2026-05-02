@@ -3,7 +3,7 @@ import {
   Copy, Check, RefreshCw, Plus, Trash2, Search,
   TrendingUp, Users, Send, DollarSign, Zap, Target,
   MessageSquare, Mail, Phone, Building2, MapPin, Briefcase,
-  AlertCircle, BarChart3, Sparkles,
+  AlertCircle, BarChart3, Sparkles, X,
 } from "lucide-react";
 
 // ── Fonts ──────────────────────────────────────────────────────────────────
@@ -89,6 +89,15 @@ async function callClaude(prompt) {
   if (!res.ok) throw new Error(`API error ${res.status}`);
   const data = await res.json();
   return data.content?.find(b => b.type === "text")?.text ?? "";
+}
+
+function personalizePrompt(lead, icp, type) {
+  const leadCtx = `Lead: ${lead.name} at ${lead.company}${lead.contact ? ` (${lead.contact})` : ""}. Source: ${lead.source || "unknown"}. Deal value: £${lead.value || 0}.`;
+  const icpCtx = `Your offer: ${icp.offerType || "consulting services"}. Target industry: ${icp.industry || "business"}. Pain point you solve: ${icp.painPoint || "growth challenges"}. Primary platform: ${icp.platform || "email"}.`;
+  if (type === "email") {
+    return `${leadCtx}\n${icpCtx}\n\nWrite a highly personalized cold outreach email specifically for ${lead.name} at ${lead.company}. Reference their company by name. Connect your offer to their likely pain. Include a subject line then the body. No explanations.`;
+  }
+  return `${leadCtx}\n${icpCtx}\n\nWrite a short personalized cold DM for ${icp.platform || "LinkedIn"} specifically for ${lead.name} at ${lead.company}. Max 5 sentences. Use their name. Reference their company. End with a soft CTA. No explanations.`;
 }
 
 function buildPrompt(icp, type) {
@@ -314,6 +323,86 @@ function ContentGenerator({ icp, assets, setAssets, setGenerating, showToast }) 
   );
 }
 
+// ── Lead Outreach Modal ────────────────────────────────────────────────────
+function LeadOutreachModal({ lead, icp, onClose }) {
+  const [email, setEmail] = useState({ content: "", loading: true });
+  const [dm, setDm] = useState({ content: "", loading: true });
+
+  const generate = useCallback(async () => {
+    setEmail({ content: "", loading: true });
+    setDm({ content: "", loading: true });
+    const [emailText, dmText] = await Promise.all([
+      callClaude(personalizePrompt(lead, icp, "email")).catch(() => "Generation failed. Try again."),
+      callClaude(personalizePrompt(lead, icp, "dm")).catch(() => "Generation failed. Try again."),
+    ]);
+    setEmail({ content: emailText, loading: false });
+    setDm({ content: dmText, loading: false });
+  }, [lead, icp]);
+
+  useEffect(() => { generate(); }, [generate]);
+
+  const copy = (text) => navigator.clipboard.writeText(text);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(8,8,16,0.85)", backdropFilter: "blur(8px)" }}>
+      <div className="fade-in bg-[#0c0c18] border border-[#1e1e30] rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="sticky top-0 bg-[#0c0c18] border-b border-[#1e1e30] px-6 py-4 flex items-center justify-between z-10">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-[#6366f1]/10 flex items-center justify-center">
+                <Sparkles size={13} className="text-[#818cf8]" />
+              </div>
+              <span className="font-display font-700 text-[#e8eaf8] text-sm">Personalized Outreach</span>
+            </div>
+            <p className="font-body text-[#4a4c6a] text-xs mt-0.5 ml-9">{lead.name} · {lead.company}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={generate}
+              disabled={email.loading || dm.loading}
+              className="p-1.5 rounded-lg bg-[#1a1a2e] hover:bg-[#22223a] text-[#6b7280] hover:text-[#818cf8] transition-all disabled:opacity-40"
+              title="Regenerate"
+            >
+              <RefreshCw size={13} className={(email.loading || dm.loading) ? "animate-spin" : ""} />
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg bg-[#1a1a2e] hover:bg-[#22223a] text-[#6b7280] hover:text-[#ad4a4a] transition-all">
+              <X size={13} />
+            </button>
+          </div>
+        </div>
+        <div className="p-6 space-y-4">
+          <OutputCard
+            title="Personalized Cold Email"
+            icon={Mail}
+            content={email.content}
+            loading={email.loading}
+            onRegenerate={() => {
+              setEmail({ content: "", loading: true });
+              callClaude(personalizePrompt(lead, icp, "email"))
+                .then(t => setEmail({ content: t, loading: false }))
+                .catch(() => setEmail({ content: "Generation failed. Try again.", loading: false }));
+            }}
+            onCopy={() => copy(email.content)}
+          />
+          <OutputCard
+            title="Personalized Cold DM"
+            icon={MessageSquare}
+            content={dm.content}
+            loading={dm.loading}
+            onRegenerate={() => {
+              setDm({ content: "", loading: true });
+              callClaude(personalizePrompt(lead, icp, "dm"))
+                .then(t => setDm({ content: t, loading: false }))
+                .catch(() => setDm({ content: "Generation failed. Try again.", loading: false }));
+            }}
+            onCopy={() => copy(dm.content)}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Lead Tracker ───────────────────────────────────────────────────────────
 const STATUS_ORDER = ["Cold", "Warm", "Qualified", "Proposal Sent", "Closed", "Lost"];
 const STATUS_COLORS = {
@@ -327,11 +416,12 @@ const STATUS_COLORS = {
 
 const emptyLead = { name: "", company: "", contact: "", source: "", value: "", status: "Cold" };
 
-function LeadTracker({ leads, setLeads, showToast }) {
+function LeadTracker({ leads, setLeads, icp, showToast }) {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
   const [form, setForm] = useState(emptyLead);
   const [showForm, setShowForm] = useState(false);
+  const [personalizeTarget, setPersonalizeTarget] = useState(null);
 
   const addLead = () => {
     if (!form.name.trim()) return;
@@ -487,6 +577,13 @@ function LeadTracker({ leads, setLeads, showToast }) {
                 {lead.status}
               </button>
               <button
+                onClick={() => setPersonalizeTarget(lead)}
+                className="opacity-0 group-hover:opacity-100 text-[#3a3c58] hover:text-[#818cf8] transition-all p-1.5 rounded-lg hover:bg-[#6366f1]/10"
+                title="Generate personalized outreach"
+              >
+                <Sparkles size={13} />
+              </button>
+              <button
                 onClick={() => deleteLead(lead.id)}
                 className="opacity-0 group-hover:opacity-100 text-[#3a3c58] hover:text-[#ad4a4a] transition-all p-1.5 rounded-lg hover:bg-[#251818]"
               >
@@ -495,6 +592,14 @@ function LeadTracker({ leads, setLeads, showToast }) {
             </div>
           ))}
         </div>
+      )}
+
+      {personalizeTarget && (
+        <LeadOutreachModal
+          lead={personalizeTarget}
+          icp={icp}
+          onClose={() => setPersonalizeTarget(null)}
+        />
       )}
     </div>
   );
@@ -677,7 +782,7 @@ export default function App() {
               showToast={showToast}
             />
           )}
-          {activeTab === "leads" && <LeadTracker leads={leads} setLeads={setLeads} showToast={showToast} />}
+          {activeTab === "leads" && <LeadTracker leads={leads} setLeads={setLeads} icp={icp} showToast={showToast} />}
         </main>
 
         {/* Toast */}
