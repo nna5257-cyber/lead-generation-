@@ -876,18 +876,29 @@ function Dashboard({ leads, assets }) {
 
 // ── Main App ───────────────────────────────────────────────────────────────
 export default function App() {
-  const [activeTab, setActiveTab] = useState("dashboard");
-  const [icp, setIcp] = useState(defaultICP);
-  const [assets, setAssets] = useState({});
-  const [generating, setGenerating] = useState(false);
-  const [leads, setLeads] = useState([
+  const SAMPLE_LEADS = [
     { id: 1, name: "Sarah Mitchell", company: "Venture Co", contact: "s.mitchell@venture.co", source: "LinkedIn", value: 4500, status: "Warm", score: 78, scoreReason: "Good industry fit, strong platform match, mid-range budget alignment.", scoring: false },
     { id: 2, name: "James Okafor", company: "ScaleHQ", contact: "james@scalehq.io", source: "Cold Email", value: 8000, status: "Qualified", score: 91, scoreReason: "Excellent ICP match — right size, high deal value, qualified status signals urgency.", scoring: false },
     { id: 3, name: "Priya Sharma", company: "Bloom Brand", contact: "priya@bloombrand.com", source: "Referral", value: 12000, status: "Closed", score: 95, scoreReason: "Perfect fit — referral source, high value, closed deal confirms ICP accuracy.", scoring: false },
-  ]);
+  ];
+
+  const load = (key, fallback) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } };
+
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [icp, setIcp] = useState(() => load("lf_icp", defaultICP));
+  const [assets, setAssets] = useState(() => load("lf_assets", {}));
+  const [generating, setGenerating] = useState(false);
+  const [leads, setLeads] = useState(() => load("lf_leads", SAMPLE_LEADS));
   const [toast, setToast] = useState(null);
   const [apiKeyModal, setApiKeyModal] = useState(!getApiKey());
   const [apiKeyUpdate, setApiKeyUpdate] = useState(false);
+
+  useEffect(() => { localStorage.setItem("lf_icp", JSON.stringify(icp)); }, [icp]);
+  useEffect(() => { localStorage.setItem("lf_assets", JSON.stringify(assets)); }, [assets]);
+  useEffect(() => {
+    const clean = leads.map(l => ({ ...l, scoring: false }));
+    localStorage.setItem("lf_leads", JSON.stringify(clean));
+  }, [leads]);
 
   const showToast = useCallback((msg) => setToast(msg), []);
 
