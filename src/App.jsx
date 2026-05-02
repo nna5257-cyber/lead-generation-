@@ -177,6 +177,71 @@ function buildPrompt(icp, type) {
   return prompts[type];
 }
 
+// ── Onboarding ─────────────────────────────────────────────────────────────
+function OnboardingModal({ onComplete }) {
+  const [step, setStep] = useState(0);
+
+  const steps = [
+    {
+      icon: Zap,
+      title: "Welcome to LeadForge",
+      body: "Your AI-powered lead generation toolkit. Build your ideal client profile, generate outreach assets, score leads, and track your pipeline — all in one place.",
+      cta: "Get Started",
+    },
+    {
+      icon: Target,
+      title: "Define Your ICP",
+      body: "Your Ideal Client Profile is the engine behind every asset LeadForge generates. The more specific you are, the higher-converting your outreach will be.",
+      cta: "Build My ICP",
+    },
+    {
+      icon: Sparkles,
+      title: "Generate & Close",
+      body: "Once your ICP is set, LeadForge generates cold emails, DMs, discovery questions, pitches, and more — tailored precisely to your ideal client.",
+      cta: "Let's Go",
+    },
+  ];
+
+  const current = steps[step];
+  const Icon = current.icon;
+  const isLast = step === steps.length - 1;
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: "rgba(8,8,16,0.92)", backdropFilter: "blur(12px)" }}>
+      <div className="fade-in w-full max-w-sm">
+        <div className="bg-[#0e0e1a] border border-[#1e1e30] rounded-2xl p-8 space-y-6 text-center">
+          <div className="flex justify-center">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#6366f1]/20 to-[#8b5cf6]/20 border border-[#6366f1]/20 flex items-center justify-center">
+              <Icon size={24} className="text-[#818cf8]" />
+            </div>
+          </div>
+          <div>
+            <h2 className="font-display font-700 text-[#e8eaf8] text-lg mb-2">{current.title}</h2>
+            <p className="font-body text-[#5a5c78] text-sm leading-relaxed">{current.body}</p>
+          </div>
+          {/* Step dots */}
+          <div className="flex justify-center gap-1.5">
+            {steps.map((_, i) => (
+              <div key={i} className={`h-1 rounded-full transition-all ${i === step ? "w-6 bg-[#6366f1]" : "w-1.5 bg-[#2a2a40]"}`} />
+            ))}
+          </div>
+          <button
+            onClick={() => isLast ? onComplete() : setStep(s => s + 1)}
+            className="btn-primary font-display font-600 text-white rounded-xl px-6 py-3 text-sm w-full"
+          >
+            {current.cta}
+          </button>
+          {step > 0 && (
+            <button onClick={() => setStep(s => s - 1)} className="font-body text-[#3a3c58] hover:text-[#6b7280] text-xs transition-colors">
+              Back
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── API Key Modal ──────────────────────────────────────────────────────────
 function ApiKeyModal({ onSave, isUpdate = false }) {
   const [val, setVal] = useState(isUpdate ? getApiKey() : "");
@@ -892,6 +957,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [apiKeyModal, setApiKeyModal] = useState(!getApiKey());
   const [apiKeyUpdate, setApiKeyUpdate] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("lf_onboarded") && !!getApiKey());
 
   useEffect(() => { localStorage.setItem("lf_icp", JSON.stringify(icp)); }, [icp]);
   useEffect(() => { localStorage.setItem("lf_assets", JSON.stringify(assets)); }, [assets]);
@@ -1001,9 +1067,17 @@ export default function App() {
         {/* Toast */}
         {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
+        {/* Onboarding */}
+        {showOnboarding && !apiKeyModal && (
+          <OnboardingModal onComplete={() => { localStorage.setItem("lf_onboarded", "1"); setShowOnboarding(false); }} />
+        )}
+
         {/* API Key modals */}
         {apiKeyModal && (
-          <ApiKeyModal onSave={() => setApiKeyModal(false)} isUpdate={false} />
+          <ApiKeyModal onSave={() => {
+            setApiKeyModal(false);
+            if (!localStorage.getItem("lf_onboarded")) setShowOnboarding(true);
+          }} isUpdate={false} />
         )}
         {apiKeyUpdate && (
           <ApiKeyModal onSave={() => { setApiKeyUpdate(false); showToast("API key updated"); }} isUpdate={true} />
