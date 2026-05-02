@@ -117,12 +117,12 @@ async function callClaude(prompt) {
 }
 
 function personalizePrompt(lead, icp, type) {
-  const leadCtx = `Lead: ${lead.name} at ${lead.company}${lead.contact ? ` (${lead.contact})` : ""}. Source: ${lead.source || "unknown"}. Deal value: £${lead.value || 0}.`;
+  const leadCtx = `Lead: ${lead.name} at ${lead.company}${lead.contact ? ` (${lead.contact})` : ""}. Source: ${lead.source || "unknown"}. Deal value: £${lead.value || 0}.${lead.notes ? `\nResearch notes: ${lead.notes}` : ""}`;
   const icpCtx = `Your offer: ${icp.offerType || "consulting services"}. Target industry: ${icp.industry || "business"}. Pain point you solve: ${icp.painPoint || "growth challenges"}. Primary platform: ${icp.platform || "email"}.`;
   if (type === "email") {
-    return `${leadCtx}\n${icpCtx}\n\nWrite a highly personalized cold outreach email specifically for ${lead.name} at ${lead.company}. Reference their company by name. Connect your offer to their likely pain. Include a subject line then the body. No explanations.`;
+    return `${leadCtx}\n${icpCtx}\n\nWrite a highly personalized cold outreach email specifically for ${lead.name} at ${lead.company}. Reference their company by name.${lead.notes ? " Weave in the research notes naturally." : ""} Connect your offer to their likely pain. Include a subject line then the body. No explanations.`;
   }
-  return `${leadCtx}\n${icpCtx}\n\nWrite a short personalized cold DM for ${icp.platform || "LinkedIn"} specifically for ${lead.name} at ${lead.company}. Max 5 sentences. Use their name. Reference their company. End with a soft CTA. No explanations.`;
+  return `${leadCtx}\n${icpCtx}\n\nWrite a short personalized cold DM for ${icp.platform || "LinkedIn"} specifically for ${lead.name} at ${lead.company}. Max 5 sentences. Use their name.${lead.notes ? " Reference the research notes naturally." : ""} Reference their company. End with a soft CTA. No explanations.`;
 }
 
 function scorePrompt(lead, icp) {
@@ -850,7 +850,7 @@ const STATUS_COLORS = {
   Lost: "bg-[#251818] text-[#ad4a4a] border-[#3a1e1e]",
 };
 
-const emptyLead = { name: "", company: "", contact: "", source: "", value: "", status: "Cold", score: null, scoreReason: "", scoring: false };
+const emptyLead = { name: "", company: "", contact: "", source: "", value: "", status: "Cold", score: null, scoreReason: "", scoring: false, notes: "" };
 
 function LeadTracker({ leads, setLeads, icp, showToast }) {
   const [search, setSearch] = useState("");
@@ -954,6 +954,13 @@ function LeadTracker({ leads, setLeads, icp, showToast }) {
               {STATUS_ORDER.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
+          <textarea
+            value={form.notes}
+            onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
+            placeholder="Research notes — LinkedIn bio, recent activity, company news… (used for personalized outreach)"
+            rows={2}
+            className="input-field font-body w-full rounded-xl px-3 py-2.5 text-sm resize-none md:col-span-3"
+          />
           <div className="flex gap-3">
             <button onClick={addLead} disabled={!form.name.trim()} className="btn-primary font-display font-600 text-white rounded-xl px-5 py-2.5 text-sm">Save Lead</button>
             <button onClick={() => setShowForm(false)} className="font-body text-[#5a5c78] hover:text-[#9ca3b8] text-sm transition-colors">Cancel</button>
@@ -994,7 +1001,8 @@ function LeadTracker({ leads, setLeads, icp, showToast }) {
       ) : (
         <div className="space-y-2">
           {filtered.map(lead => (
-            <div key={lead.id} className="fade-in bg-[#0e0e1a] border border-[#1e1e30] rounded-xl px-4 py-3.5 flex items-center gap-3 flex-wrap hover:border-[#2a2a40] transition-colors group">
+            <div key={lead.id} className="fade-in bg-[#0e0e1a] border border-[#1e1e30] rounded-xl overflow-hidden hover:border-[#2a2a40] transition-colors group">
+            <div className="px-4 py-3.5 flex items-center gap-3 flex-wrap">
               <div className="flex-1 min-w-[140px]">
                 <input
                   value={lead.name}
@@ -1072,6 +1080,17 @@ function LeadTracker({ leads, setLeads, icp, showToast }) {
               >
                 <Trash2 size={13} />
               </button>
+            </div>
+            {/* Notes row */}
+            <div className="px-4 pb-3">
+              <textarea
+                value={lead.notes ?? ""}
+                onChange={e => updateLead(lead.id, "notes", e.target.value)}
+                placeholder="Research notes (used for personalized outreach)…"
+                rows={1}
+                className="font-body text-[#4a4c6a] text-xs bg-transparent border-none outline-none w-full resize-none placeholder-[#2a2a40] focus:text-[#6b7280]"
+              />
+            </div>
             </div>
           ))}
         </div>
