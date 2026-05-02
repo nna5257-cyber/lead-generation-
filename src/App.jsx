@@ -3,7 +3,7 @@ import {
   Copy, Check, RefreshCw, Plus, Trash2, Search,
   TrendingUp, Users, Send, DollarSign, Zap, Target,
   MessageSquare, Mail, Phone, Building2, MapPin, Briefcase,
-  AlertCircle, BarChart3, Sparkles, X, KeyRound, Eye, EyeOff, ListOrdered,
+  AlertCircle, BarChart3, Sparkles, X, KeyRound, Eye, EyeOff, ListOrdered, Download,
 } from "lucide-react";
 
 // ── Fonts ──────────────────────────────────────────────────────────────────
@@ -146,6 +146,23 @@ Lead:
 Score based on: industry match, company size fit, budget alignment, source quality, and urgency from their pipeline status.
 
 Return ONLY valid JSON, no markdown: {"score": 82, "reason": "Strong industry match and budget alignment"}`;
+}
+
+function downloadFile(filename, content, mime = "text/plain") {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([content], { type: mime }));
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function leadsToCSV(leads) {
+  const headers = ["Name", "Company", "Contact", "Source", "Value (£)", "Status", "Score", "Score Reason"];
+  const rows = leads.map(l => [
+    l.name, l.company, l.contact, l.source, l.value ?? "", l.status,
+    l.score ?? "", l.scoreReason ?? "",
+  ].map(v => `"${String(v).replace(/"/g, '""')}"`));
+  return [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
 }
 
 function getScoreTier(score) {
@@ -569,6 +586,19 @@ function ContentGenerator({ icp, assets, setAssets, setGenerating, showToast }) 
         !hasAssets ? (
           <EmptyState label="Generate your outreach asset toolkit from your ICP." onGenerate={() => {}} loading={false} />
         ) : (
+          <div className="space-y-4">
+          <div className="flex justify-end">
+            <button
+              onClick={() => {
+                const lines = outputDefs.map(d => `## ${d.title}\n\n${assets[d.key]?.content ?? "(not generated)"}`).join("\n\n---\n\n");
+                downloadFile("outreach-assets.txt", lines);
+                showToast("Assets exported");
+              }}
+              className="font-body text-[#5a5c78] hover:text-[#9ca3b8] border border-[#1e1e30] hover:border-[#2a2a40] rounded-xl px-4 py-2 text-xs flex items-center gap-1.5 transition-all"
+            >
+              <Download size={12} /> Export Assets
+            </button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {outputDefs.map(({ key, title, icon }) => (
               <div key={key} className={key === "email" || key === "questions" ? "md:col-span-2" : ""}>
@@ -582,6 +612,7 @@ function ContentGenerator({ icp, assets, setAssets, setGenerating, showToast }) 
                 />
               </div>
             ))}
+          </div>
           </div>
         )
       )}
@@ -768,9 +799,19 @@ function LeadTracker({ leads, setLeads, icp, showToast }) {
             {leads.length} leads tracked · £{leads.filter(l => l.status === "Closed").reduce((s, l) => s + (l.value || 0), 0).toLocaleString()} closed
           </p>
         </div>
-        <button onClick={() => setShowForm(v => !v)} className="btn-primary font-display font-600 text-white rounded-xl px-5 py-2.5 text-sm flex items-center gap-2">
-          <Plus size={15} /> Add Lead
-        </button>
+        <div className="flex gap-2">
+          {leads.length > 0 && (
+            <button
+              onClick={() => { downloadFile("leads.csv", leadsToCSV(leads), "text/csv"); showToast("Leads exported"); }}
+              className="font-body text-[#5a5c78] hover:text-[#9ca3b8] border border-[#1e1e30] hover:border-[#2a2a40] rounded-xl px-4 py-2.5 text-sm flex items-center gap-2 transition-all"
+            >
+              <Download size={13} /> Export CSV
+            </button>
+          )}
+          <button onClick={() => setShowForm(v => !v)} className="btn-primary font-display font-600 text-white rounded-xl px-5 py-2.5 text-sm flex items-center gap-2">
+            <Plus size={15} /> Add Lead
+          </button>
+        </div>
       </div>
 
       {showForm && (
